@@ -1,31 +1,37 @@
-import React from 'react'
-import { X, Check, Star } from 'lucide-react'
+import React, { useState } from 'react'
+import { X, Check, Star, AlertCircle } from 'lucide-react'
 import Button from './Button'
 import CardDisplay from './CardDisplay'
+import { SUBSCRIPTION_PLANS, formatPrice } from '../lib/stripe'
+import dataService from '../lib/dataService'
 
 const SubscriptionModal = ({ onClose, onSubscribe }) => {
-  const features = {
-    free: [
-      'Basic legal guides',
-      'Essential scripts (English)',
-      'Basic recording (5 minutes)',
-      'Standard alerts'
-    ],
-    premium: [
-      'State-specific detailed guides',
-      'Multilingual scripts (10+ languages)',
-      'Unlimited recording + cloud storage',
-      'Enhanced emergency alerts',
-      'Legal consultation network access',
-      'Offline guide downloads',
-      'Priority customer support'
-    ]
-  }
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [error, setError] = useState(null)
 
-  const handleSubscribe = (plan) => {
-    // In a real app, this would integrate with Stripe
-    console.log('Subscribing to:', plan)
-    onSubscribe(plan)
+  const handleSubscribe = async (planId) => {
+    setIsProcessing(true)
+    setError(null)
+    
+    try {
+      if (dataService.user) {
+        // User is authenticated, proceed with Stripe checkout
+        const result = await dataService.upgradeSubscription(planId)
+        if (result.success) {
+          onSubscribe(planId)
+        } else {
+          setError(result.error || 'Failed to start subscription process')
+        }
+      } else {
+        // User needs to sign up first
+        setError('Please complete onboarding first to subscribe')
+      }
+    } catch (error) {
+      console.error('Subscription error:', error)
+      setError('Failed to start subscription process. Please try again.')
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   return (
@@ -42,24 +48,33 @@ const SubscriptionModal = ({ onClose, onSubscribe }) => {
             </button>
           </div>
 
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
+              <span className="text-sm text-red-700">{error}</span>
+            </div>
+          )}
+
           <div className="space-y-6">
             {/* Premium Plan */}
             <CardDisplay className="border-2 border-primary">
               <div className="flex items-center gap-2 mb-4">
                 <Star className="text-accent fill-current" size={24} />
-                <h3 className="text-xl font-semibold">Premium Plan</h3>
+                <h3 className="text-xl font-semibold">{SUBSCRIPTION_PLANS.premium.name} Plan</h3>
                 <span className="bg-accent/10 text-accent px-2 py-1 rounded text-sm font-medium">
                   Most Popular
                 </span>
               </div>
               
               <div className="mb-4">
-                <div className="text-3xl font-bold text-primary mb-1">$2.99</div>
-                <div className="text-gray-600">per month</div>
+                <div className="text-3xl font-bold text-primary mb-1">
+                  {formatPrice(SUBSCRIPTION_PLANS.premium.price)}
+                </div>
+                <div className="text-gray-600">per {SUBSCRIPTION_PLANS.premium.interval}</div>
               </div>
               
               <ul className="space-y-2 mb-6">
-                {features.premium.map((feature, index) => (
+                {SUBSCRIPTION_PLANS.premium.features.map((feature, index) => (
                   <li key={index} className="flex items-center gap-2">
                     <Check size={16} className="text-green-500 flex-shrink-0" />
                     <span className="text-sm">{feature}</span>
@@ -70,8 +85,9 @@ const SubscriptionModal = ({ onClose, onSubscribe }) => {
               <Button
                 onClick={() => handleSubscribe('premium')}
                 className="w-full btn-primary"
+                disabled={isProcessing}
               >
-                Start Premium Trial
+                {isProcessing ? 'Processing...' : 'Start Premium Trial'}
               </Button>
               
               <p className="text-xs text-gray-500 text-center mt-2">
@@ -81,15 +97,15 @@ const SubscriptionModal = ({ onClose, onSubscribe }) => {
 
             {/* Free Plan for Comparison */}
             <CardDisplay>
-              <h3 className="text-lg font-semibold mb-4">Free Plan</h3>
+              <h3 className="text-lg font-semibold mb-4">{SUBSCRIPTION_PLANS.free.name} Plan</h3>
               
               <div className="mb-4">
-                <div className="text-2xl font-bold mb-1">$0</div>
-                <div className="text-gray-600">forever</div>
+                <div className="text-2xl font-bold mb-1">{formatPrice(SUBSCRIPTION_PLANS.free.price)}</div>
+                <div className="text-gray-600">{SUBSCRIPTION_PLANS.free.interval}</div>
               </div>
               
               <ul className="space-y-2 mb-6">
-                {features.free.map((feature, index) => (
+                {SUBSCRIPTION_PLANS.free.features.map((feature, index) => (
                   <li key={index} className="flex items-center gap-2">
                     <Check size={16} className="text-green-500 flex-shrink-0" />
                     <span className="text-sm">{feature}</span>
@@ -101,6 +117,7 @@ const SubscriptionModal = ({ onClose, onSubscribe }) => {
                 onClick={onClose}
                 variant="secondary"
                 className="w-full"
+                disabled={isProcessing}
               >
                 Continue with Free
               </Button>
